@@ -90,9 +90,9 @@ class CRNN(nn.Module):
         self.cat_tf = torch.nn.Linear(nb_in+embedding_size, nb_in)
 
         # # todo e2e
-        # # 定义beatsmodel
+        # # beatsmodel
         self.beats = BEATsModel(cfg_path="data/pretrained_models/BEATs_iter3_plus_AS2M.pt")
-        # # 让beats model本身的参数不训练，prompt训练
+
         for k, v in self.beats.named_parameters():
             if k.find('prompt_token') != -1:
                 v.requires_grad = True
@@ -104,8 +104,8 @@ class CRNN(nn.Module):
                 v.requires_grad = False
         
     def forward(self, x, audio, pad_mask=None, embeddings=None, tuning_tag=True):
-        # x [160, 128, 626] (batch_size, n_freq, n_frames)
-        # embeddings.shape = [160, 768, 496] # [bs, ? , frames]
+        # x [batch_size, n_freq, n_frames]
+        # embeddings.shape  [bs,  , frames]
         # todo e2e
         if audio==None:
             # print("audio is None, without beats prompt")
@@ -114,16 +114,16 @@ class CRNN(nn.Module):
             embeddings, cls_token = self.beats(audio)
             embeddings = embeddings.transpose(1, 2)
         # todo pado:
-        x = x.transpose(1, 2).unsqueeze(1) # [160, 1, 626, 128] (batch_size, n_channels, n_frames, n_freq)
+        x = x.transpose(1, 2).unsqueeze(1) #  (batch_size, n_channels, n_frames, n_freq)
 
         # input size : (batch_size, n_channels, n_frames, n_freq)
         if self.cnn_integration:
             bs_in, nc_in = x.size(0), x.size(1)
             x = x.view(bs_in * nc_in, 1, *x.shape[2:])
 
-        # (batch_size, n_channels, n_frames, n_freq) [160, 1, 626, 128]
+        # (batch_size, n_channels, n_frames, n_freq) 
         # conv features
-        x = self.cnn(x) # [160, 128, 156, 1]
+        x = self.cnn(x) 
         bs, chan, frames, freq = x.size() 
         if self.cnn_integration:
             x = x.reshape(bs_in, chan * nc_in, frames, freq)
@@ -137,14 +137,12 @@ class CRNN(nn.Module):
         else:
             x = x.squeeze(-1)
             x = x.permute(0, 2, 1)  # [bs, frames, chan] [160, 156, 128]
-        # embeddings.shape = [160, 768, 496] # [bs, ? , frames]
-        reshape_emb = torch.nn.functional.adaptive_avg_pool1d(embeddings, x.shape[1]).transpose(1, 2) #reshape_emb: [160, 156, 768] 
-        # x : [160, 156, 128]   reshape_emb : [160, 156, 768] 
-        x = self.cat_tf(torch.cat((x, reshape_emb), -1)) # cat_tf : [160, 156, 896] - > [160, 156, 128] 
-      
-        # 108 156 128 #  128  20个强
-        
-        # x = torch.cat([self.cls_token.expand(bs, -1, -1), x], dim=1) # [bs, frames, chan] 108 157 128
+        # embeddings.shape   [bs,  , frames]
+        reshape_emb = torch.nn.functional.adaptive_avg_pool1d(embeddings, x.shape[1]).transpose(1, 2) #reshape_emb
+
+        x = self.cat_tf(torch.cat((x, reshape_emb), -1)) 
+
+        # x = torch.cat([self.cls_token.expand(bs, -1, -1), x], dim=1) # [bs, frames, chan] 
         x = self.rnn(x) 
         x = self.dropout(x)
         strong = self.dense(x)  # [bs, frames, nclass]
