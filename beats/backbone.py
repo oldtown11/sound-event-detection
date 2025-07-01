@@ -29,7 +29,6 @@ class TransformerEncoder(nn.Module):
         # numb = 1 - 10
         self.prompt_dim = 768
         self.batch_size = 24
-        # self.prompt_token = torch.nn.Parameter(torch.zeros(12, 496, self.prompt_dim)) #    x： [496, 160, 768]
         self.prompt_token = torch.nn.Parameter(torch.zeros(12, 10, self.prompt_dim)) #    x： [496, 160, 768]
         self.prompt_token = nn.init.xavier_normal_(self.prompt_token)
 
